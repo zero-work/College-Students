@@ -1,0 +1,405 @@
+#include <Servo.h>
+Servo myservo;
+
+//步进+舵机参数
+#define stepsPerRevolution 3200
+#define dirPin 2
+#define stepPin 3
+
+int pos = 0;
+String s = "";
+int angle = 1;
+// 电机旋转步数
+int StepRequired;
+
+//超声波参数
+// 设定SR04连接的Arduino引脚
+const int TrigPin0 = 4;   //2号口
+const int EchoPin0 = 5;   //3号口
+const int TrigPin1 = 6;   //4号口
+const int EchoPin1 = 7;   //5号口
+const int TrigPin2 = 8;   //6号口
+const int EchoPin2 = 10;   //7号口
+const int TrigPin3 = 11;   //8号口
+const int EchoPin3 = 12;   //9号口
+int flag = 0,Signal;
+float Initial_distance[4],distance0,distance1,distance2,distance3;
+String flag_data; 
+
+int return_int=0;
+
+
+
+
+/*声明函数  步进电机+舵机用*/
+void TurnRight(int angle);
+void TurnLeft(int angle);
+void List();
+void duoTurn(void);
+/*超声波用*/
+void initialization();
+void test_check();
+void read_distance();
+void uart();
+
+
+
+void setup() {  //初始化
+   Serial.begin(115200);
+   //舵机+步进电机
+    myservo.attach(9); 
+    // Declare pins as output:
+    pinMode(stepPin, OUTPUT);
+    pinMode(dirPin, OUTPUT);
+
+    //超声波
+        pinMode(TrigPin0, OUTPUT); 
+    // 要检测引脚上输入的脉冲宽度，需要先设置为输入状态
+        pinMode(EchoPin0, INPUT); 
+        pinMode(TrigPin1, OUTPUT); 
+        pinMode(EchoPin1, INPUT); 
+        pinMode(TrigPin2, OUTPUT); 
+        pinMode(EchoPin2, INPUT); 
+        pinMode(TrigPin3, OUTPUT); 
+        pinMode(EchoPin3, INPUT); 
+}
+
+
+void loop() {
+  //从串口接收数据,控制电机
+  List();
+//  Serial.println(angle);
+  if(angle == 0){
+    duoTurn();
+    //Serial.println("turn 0");
+    
+  }
+    if(angle==90||angle==180){
+      TurnRight(angle);  // 右转
+      duoTurn();
+      TurnLeft(angle);  // 左转
+
+    }
+  if(angle==270){
+      
+     TurnLeft(90);  // 左转
+     duoTurn();
+      TurnRight(90);  // 左转
+
+    Serial.println("turn 270");
+    }
+    s = "";
+
+    if(angle==666){
+      //满载检测
+      while(1){
+        //如果测好固定距离，不用初始化，直接用确定的初始值
+        if(flag < 1)
+        {
+          initialization();
+          flag++;
+          Serial.println("初始化完成");
+          } 
+          
+        read_distance();
+        test_check();
+        delay(200);
+        if(return_int!=0){
+            uart();
+            return_int = 0;
+            break;
+        }
+      }
+    }
+  angle = 1;
+    
+  delay(200);
+ 
+}
+
+//////////////////////////////////////////////
+
+void dir_r(int cir){
+    digitalWrite(dirPin, HIGH);
+  for (int i = 0; i < cir; i++) {
+    // These four lines result in 1 step:
+    digitalWrite(stepPin, HIGH);
+    delayMicroseconds(2000);
+    digitalWrite(stepPin, LOW);
+    delayMicroseconds(2000);
+  }
+  delay(300);
+}
+
+
+void dir_l(int cir){
+   // Set the spinning direction counterclockwise:
+  digitalWrite(dirPin, LOW);
+  // Spin the stepper motor 1 revolution quickly:
+
+  for (int i = 0; i < cir; i++) {
+    // These four lines result in 1 step:
+    digitalWrite(stepPin, HIGH);
+    delayMicroseconds(2000);
+    digitalWrite(stepPin, LOW);
+    delayMicroseconds(2000);
+
+  }
+  
+}
+
+
+void List()
+{
+   //检测串口信息
+ 
+       while(Serial.available()>0)
+    {
+       char c = Serial.read();
+       s += c;
+      }
+//  s = s.toInt();
+       if(s[0] == '0'){
+          angle=0;
+      }
+       if(s == "90"){
+          angle=90;
+      }
+       if(s[0] == '1'){
+          angle=180;
+      }
+       if(s[0] == '2'){
+          angle=270;
+      }
+      if(s[0] == '6'){
+        angle = 666;
+        }
+      s = "";
+      Serial.println(angle);/*串口不接受数据*/
+}
+//右转
+void TurnRight(int angle)
+{
+ switch(angle)
+ {
+    case 0:
+          break;
+    case 90:
+          StepRequired  =  (stepsPerRevolution) / 4; 
+          dir_r(StepRequired);
+//          Serial.println(StepRequired);
+//          Serial.print("right 90");
+          break;
+    case 180:
+          StepRequired  =  (stepsPerRevolution) / 2; 
+          dir_r(StepRequired);
+          break;
+     default:
+          break;
+  }
+  }
+
+
+//左转
+void TurnLeft(int angle)
+{
+  switch(angle)
+  {
+    case 0:
+          break;
+    case 90:
+          StepRequired  =  (stepsPerRevolution / 4); 
+         // Serial.print(StepRequired);
+          dir_l(StepRequired);
+          break;
+    case 180:
+          StepRequired  =  ( stepsPerRevolution / 2); 
+         // Serial.print(StepRequired);
+          dir_l(StepRequired);
+          break;
+    case 270:
+          StepRequired  =  ( stepsPerRevolution / 4 * 3); 
+         // Serial.print(StepRequired);
+          dir_l(StepRequired);;
+          break;
+     default:
+          break;
+    }
+  }
+
+
+//舵机转120
+void duoTurn(void)
+{
+ for (pos = 0; pos <= 170; pos ++) { // 0°到120°
+    // in steps of 1 degree
+    myservo.write(pos);              // 舵机角度写入
+    delay(8);                       // 等待转动到指定角度
+  }
+  
+  delay(4000);
+  for (pos = 170; pos >= 0; pos --) { // 0°到120°
+    // in steps of 1 degree
+    myservo.write(pos);              // 舵机角度写入
+    delay(8);                       // 等待转动到指定角度
+  }
+}
+
+//——————————超声波———————————
+void test_check(){
+ int ans = 0;
+ 
+ for(int i = 0;i<3;i++){
+      read_distance();
+      if(distance0-Initial_distance[0]>3||distance0-Initial_distance[0]<-3){
+       
+        ans|= 1; //0000 | 0001 = 0001
+      }
+      else {
+        ans&=~1;
+        }
+      if (distance1-Initial_distance[1]>3||distance1-Initial_distance[1]<-3)
+       { 
+//        x100=100;
+        ans|= 2;
+      }
+      else{
+//        x100=0;
+       ans &= ~2; //0010 & 1101 = 0000             0011 & 1101 = 0001
+      }
+      if(distance2-Initial_distance[2]>3||distance2-Initial_distance[2]<-3){
+//        x10=10;
+        ans|= 4;
+      }
+      else{
+//        x10=0;
+        ans &= ~4;
+      }
+      if(distance3-Initial_distance[3]>3||distance3-Initial_distance[3]<-3){
+//        x1=1;
+         ans |= 8;
+      }
+      else{
+//        x1=0;
+        ans &= ~8;
+      }
+      
+  }
+  
+  return_int=ans;
+    
+}  
+
+//初始化
+void initialization(){
+  // 产生一个10us的高脉冲去触发TrigPin 
+        digitalWrite(TrigPin0, LOW); 
+        delayMicroseconds(2); 
+        digitalWrite(TrigPin0, HIGH); 
+        delayMicroseconds(10);
+        digitalWrite(TrigPin0, LOW); 
+    // 检测脉冲宽度，并计算出距离
+        Initial_distance[0] = pulseIn(EchoPin0, HIGH) / 58.00;
+        
+//        Serial.print("Initial_distance[0] is :");
+//        Serial.println(Initial_distance[0]);
+        
+            // 产生一个10us的高脉冲去触发TrigPin 
+        digitalWrite(TrigPin1, LOW); 
+        delayMicroseconds(2); 
+        digitalWrite(TrigPin1, HIGH); 
+        delayMicroseconds(10);
+        digitalWrite(TrigPin1, LOW); 
+    // 检测脉冲宽度，并计算出距离
+         Initial_distance[1] = pulseIn(EchoPin1, HIGH) / 58.00;
+         
+//        Serial.print("Initial_distance[1] is :");
+//        Serial.println(Initial_distance[1]);
+
+      
+        digitalWrite(TrigPin2, LOW); 
+        delayMicroseconds(2); 
+        digitalWrite(TrigPin2, HIGH); 
+        delayMicroseconds(10);
+        digitalWrite(TrigPin2, LOW); 
+    // 检测脉冲宽度，并计算出距离
+        Initial_distance[2] = pulseIn(EchoPin2, HIGH) / 58.00;
+        
+//        Serial.print("Initial_distance[2] is :");
+//        Serial.println(Initial_distance[2]);
+
+        
+        digitalWrite(TrigPin3, LOW); 
+        delayMicroseconds(2); 
+        digitalWrite(TrigPin3, HIGH); 
+        delayMicroseconds(10);
+        digitalWrite(TrigPin3, LOW); 
+    // 检测脉冲宽度，并计算出距离
+        Initial_distance[3] = pulseIn(EchoPin3, HIGH) / 58.00;
+        
+//        Serial.print("Initial_distance[3] is :");
+//        Serial.println(Initial_distance[3]);
+}
+
+
+//获取值
+void read_distance(){
+      // 产生一个10us的高脉冲去触发TrigPin 
+        digitalWrite(TrigPin0, LOW); 
+        delayMicroseconds(2); 
+        digitalWrite(TrigPin0, HIGH); 
+        delayMicroseconds(10);
+        digitalWrite(TrigPin0, LOW); 
+    // 检测脉冲宽度，并计算出距离
+        distance0 = pulseIn(EchoPin0, HIGH) / 58.00;
+        
+        
+            // 产生一个10us的高脉冲去触发TrigPin 
+        digitalWrite(TrigPin1, LOW); 
+        delayMicroseconds(2); 
+        digitalWrite(TrigPin1, HIGH); 
+        delayMicroseconds(10);
+        digitalWrite(TrigPin1, LOW); 
+    // 检测脉冲宽度，并计算出距离
+        distance1 = pulseIn(EchoPin1, HIGH) / 58.00;
+        
+        digitalWrite(TrigPin2, LOW); 
+        delayMicroseconds(2); 
+        digitalWrite(TrigPin2, HIGH); 
+        delayMicroseconds(10);
+        digitalWrite(TrigPin2, LOW); 
+    // 检测脉冲宽度，并计算出距离
+        distance2 = pulseIn(EchoPin2, HIGH) / 58.00;
+        
+
+        
+        digitalWrite(TrigPin3, LOW); 
+        delayMicroseconds(2); 
+        digitalWrite(TrigPin3, HIGH); 
+        delayMicroseconds(10);
+        digitalWrite(TrigPin3, LOW); 
+    // 检测脉冲宽度，并计算出距离
+        distance3 = pulseIn(EchoPin3, HIGH) / 58.00;
+
+//        Serial.print("distance0="); 
+//        Serial.println(distance0,'cm'); 
+//        Serial.print("distance1="); 
+//        Serial.println(distance1,'cm');
+//        Serial.print("distance2="); 
+
+//        Serial.println(distance2,'cm'); 
+//        Serial.print("distance3="); 
+//        Serial.println(distance3,'cm'); 
+          delay(50);
+  }
+
+
+void uart(){
+
+      delay(50);
+      //输出标志位（四位的状态值）
+      Serial.println(return_int,BIN);    
+      delay(200); 
+      Serial.flush();    // 清除串口缓存
+ 
+  }
